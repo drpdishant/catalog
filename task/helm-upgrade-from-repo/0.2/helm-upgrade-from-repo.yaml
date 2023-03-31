@@ -35,17 +35,43 @@ spec:
     - name: helm_image
       description: "Specify a specific helm image"
       default: "docker.io/lachlanevenson/k8s-helm@sha256:5c792f29950b388de24e7448d378881f68b3df73a7b30769a6aa861061fd08ae" #tag: v3.6.0
+    - name: extra_args
+      description: "Specify list of extra arguments"
+      default: []
+      type: array
+      # ["main/values.yaml", "overrides/service-A/values.yaml"] 
+      # helm upgrade .... -f /project/templates/main/values.yaml -f /project/templates/overrides/service-A/values.yaml 
   steps:
     - name: upgrade-from-repo
       image: $(params.helm_image)
+      args:  ["$(params.extra_args[*])"]
       script: |
         echo current installed helm releases
         helm list --namespace "$(params.release_namespace)"
         echo parsing helms repo name...
         REPO=`echo "$(params.chart_name)" | cut -d "/" -f 1`
+        EXTRA_ARGS=(`echo $@`)
         echo adding helm repo...
         helm repo add $REPO "$(params.helm_repo)"
         echo adding updating repo...
         helm repo update
         echo installing helm chart...
-        helm upgrade --wait --install --namespace "$(params.release_namespace)" $(params.release_name) $(params.chart_name) --debug --set "$(params.overwrite_values)"
+        args=(
+          --wait
+          --install
+          --namespace "$(params.release_namespace)" 
+          $(params.release_name) 
+          $(params.chart_name)
+          --debug 
+          --set "$(params.overwrite_values)"
+        )
+        if [[ -v EXTRA_ARGS ]]; then
+            args+=(${EXTRA_ARGS[@]})
+        fi
+        helm upgrade "${args[@]}"
+
+  workspaces:   
+    - description: working directory to mount values file
+      name: workDir
+      optional: true
+  
